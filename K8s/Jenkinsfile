@@ -18,9 +18,9 @@ pipeline {
 
         stage('Build Docker Image') {
             steps {
-                sh """
-                    echo "Building Docker image..."
-                    cd /var/lib/jenkins/workspace/cityzen-ETE-pipeline/Hackthon/
+                bat """
+                    echo Building Docker image...
+                    cd frontend
                     docker build -t ${IMAGE}:${IMAGE_TAG} .
                 """
             }
@@ -33,9 +33,8 @@ pipeline {
                     usernameVariable: 'USERNAME',
                     passwordVariable: 'PASSWORD'
                 )]) {
-                    sh """
-                        echo "Logging in to Docker Hub..."
-                        echo "$PASSWORD" | docker login -u "$USERNAME" --password-stdin
+                    bat """
+                        echo %PASSWORD% | docker login -u %USERNAME% --password-stdin
                     """
                 }
             }
@@ -43,7 +42,7 @@ pipeline {
 
         stage('Push Docker Image') {
             steps {
-                sh """
+                bat """
                     docker push ${IMAGE}:${IMAGE_TAG}
                     docker tag ${IMAGE}:${IMAGE_TAG} ${IMAGE}:latest
                     docker push ${IMAGE}:latest
@@ -53,14 +52,21 @@ pipeline {
 
         stage('Deploy to Kubernetes') {
             steps {
-                sh """
-                    echo "Applying Kubernetes deployment file..."
-                    cd /var/lib/jenkins/workspace/cityzen-ETE-pipeline/K8s/
-                    kubectl apply -f deployment.yaml
-                    
-                    echo "Checking rollout status..."
-                    kubectl rollout status deployment/cityzen-frontend
-                """
+                withCredentials([file(credentialsId: 'kubeconfig', variable: 'KUBECONFIG')]) {
+                    bat """
+                        echo Using kubeconfig: %KUBECONFIG%
+                        set KUBECONFIG=%KUBECONFIG%
+
+                        echo Checking nodes...
+                        kubectl get nodes
+
+                        echo Applying deployment...
+                        kubectl apply -f K8s\\deployment.yml --validate=false
+
+                        echo Checking rollout status...
+                        kubectl rollout status deployment/cityzen-frontend
+                    """
+                }
             }
         }
     }
