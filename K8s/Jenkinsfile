@@ -1,0 +1,67 @@
+pipeline {
+    agent any
+
+    environment {
+        IMAGE          = "sham9394/cityzen"
+        IMAGE_TAG      = "${BUILD_NUMBER}"
+        KUBE_NAMESPACE = "default"
+        GITHUB_REPO    = "https://github.com/yourusername/yourrepo.git"
+        GIT_BRANCH     = "main"
+    }
+
+    stages {
+
+        stage('Checkout Code') {
+            steps {
+                script {
+                    checkout([
+                        $class: 'GitSCM',
+                        branches: [[name: "*/${GIT_BRANCH}"]],
+                        userRemoteConfigs: [[
+                            url: "${GITHUB_REPO}",
+                            credentialsId: 'github-cred'   // 🔹 GitHub credentials 
+                        ]]
+                    ])
+                }
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                script {
+                    sh """
+                        echo "Building Docker image..."
+                        docker build -t ${IMAGE}:${IMAGE_TAG} .
+                    """
+                }
+            }
+        }
+
+        stage('Login to Docker Hub') {
+            steps {
+                withCredentials([usernamePassword(credentialsId: 'dockerhub-cred',
+                                                usernameVariable: 'USERNAME',
+                                                passwordVariable: 'PASSWORD')]) {
+                    sh """
+                        echo "Logging in to Docker Hub..."
+                        echo "$PASSWORD" | docker login -u "$USERNAME" --password-stdin
+                    """
+                }
+            }
+        }
+
+        stage('Push Image to Docker Hub') {
+            steps {
+                sh """
+                    docker push ${IMAGE}:${IMAGE_TAG}
+                    docker tag ${IMAGE}:${IMAGE_TAG} ${IMAGE}:latest
+                    docker push ${IMAGE}:latest
+                """
+            }
+        }
+
+        stage('Deploy to Kubernetes') {
+            steps {
+                script {
+                    sh """
+                        echo "Deploying to Kubernetes..."
